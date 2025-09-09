@@ -1,97 +1,109 @@
 import streamlit as st
 import sqlite3
 import hashlib
-from reportlab.pdfgen import canvas
 from datetime import datetime
 import os
 import random
+from reportlab.pdfgen import canvas
 
 # ---------- DATABASE SETUP ----------
 conn = sqlite3.connect("university.db", check_same_thread=False)
 c = conn.cursor()
 
 # Users table
-c.execute('''
-CREATE TABLE IF NOT EXISTS users (
+c.execute('''CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role TEXT,
+    full_name TEXT,
+    student_id TEXT,
     username TEXT UNIQUE,
-    password TEXT,
-    email TEXT
-)
-''')
+    email TEXT,
+    phone TEXT,
+    password TEXT
+)''')
 
 # Messages table
-c.execute('''
-CREATE TABLE IF NOT EXISTS messages (
+c.execute('''CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender TEXT,
     receiver TEXT,
     message TEXT,
     timestamp TEXT
-)
-''')
+)''')
 
 # Courses table
-c.execute('''
-CREATE TABLE IF NOT EXISTS courses (
+c.execute('''CREATE TABLE IF NOT EXISTS courses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     course_code TEXT,
     course_name TEXT
-)
-''')
+)''')
 
 # Registrations table
-c.execute('''
-CREATE TABLE IF NOT EXISTS registrations (
+c.execute('''CREATE TABLE IF NOT EXISTS registrations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student TEXT,
     course_code TEXT
-)
-''')
+)''')
 
 # Exams table
-c.execute('''
-CREATE TABLE IF NOT EXISTS exams (
+c.execute('''CREATE TABLE IF NOT EXISTS exams (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     course_code TEXT,
     exam_date TEXT,
     center TEXT
-)
-''')
+)''')
 
 # Attendance table
-c.execute('''
-CREATE TABLE IF NOT EXISTS attendance (
+c.execute('''CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student TEXT,
     course_code TEXT,
     date TEXT,
     status TEXT
-)
-''')
+)''')
 
 # Assignment uploads table
-c.execute('''
-CREATE TABLE IF NOT EXISTS assignments (
+c.execute('''CREATE TABLE IF NOT EXISTS assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student TEXT,
     course_code TEXT,
     filename TEXT,
     timestamp TEXT
-)
-''')
+)''')
 
 # M-Pesa payments table
-c.execute('''
-CREATE TABLE IF NOT EXISTS payments (
+c.execute('''CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student TEXT,
     amount REAL,
     status TEXT,
     timestamp TEXT
-)
-''')
+)''')
+
+# Hostel applications table
+c.execute('''CREATE TABLE IF NOT EXISTS hostel (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student TEXT,
+    room_number TEXT,
+    status TEXT,
+    timestamp TEXT
+)''')
+
+# Forum posts table
+c.execute('''CREATE TABLE IF NOT EXISTS forum (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user TEXT,
+    message TEXT,
+    timestamp TEXT
+)''')
+
+# Election votes table
+c.execute('''CREATE TABLE IF NOT EXISTS elections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student TEXT,
+    candidate TEXT,
+    timestamp TEXT
+)''')
 
 conn.commit()
 
@@ -125,31 +137,36 @@ def mpesa_payment(student, amount):
     return status
 
 # ---------- STREAMLIT APP ----------
-st.set_page_config(page_title="University Portal", layout="wide")
-st.title("🌐 University Portal System")
+st.set_page_config(page_title="MyUniSpace Portal", layout="wide")
+st.title("🌐 MyUniSpace Portal")
 
-menu = ["Home", "Register", "Login"]
-choice = st.sidebar.selectbox("Menu", menu)
+# Sidebar menu
+if 'username' not in st.session_state:
+    menu = ["Home", "Register", "Login"]
+    choice = st.sidebar.selectbox("Menu", menu)
 
 # ---------- REGISTER ----------
-if choice == "Register":
+if 'username' not in st.session_state and choice == "Register":
     st.subheader("Create an Account")
     role = st.selectbox("Role", ["Student", "Lecturer", "Admin"])
+    full_name = st.text_input("Full Name")
+    student_id = st.text_input("Admission/Student ID (optional for Lecturer/Admin)")
     username = st.text_input("Username")
     email = st.text_input("Email")
+    phone = st.text_input("Phone Number")
     password = st.text_input("Password", type='password')
     if st.button("Register"):
         if username and password:
             try:
-                c.execute("INSERT INTO users (role, username, password, email) VALUES (?, ?, ?, ?)",
-                          (role, username, hash_password(password), email))
+                c.execute("INSERT INTO users (role, full_name, student_id, username, email, phone, password) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                          (role, full_name, student_id, username, email, phone, hash_password(password)))
                 conn.commit()
                 st.success(f"{role} registered successfully!")
             except:
                 st.error("Username already exists.")
 
 # ---------- LOGIN ----------
-elif choice == "Login":
+elif 'username' not in st.session_state and choice == "Login":
     st.subheader("Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type='password')
@@ -158,9 +175,9 @@ elif choice == "Login":
         data = c.fetchone()
         if data and verify_password(password, data[1]):
             role = data[0]
-            st.success(f"Logged in as {role}")
             st.session_state['username'] = username
             st.session_state['role'] = role
+            st.success(f"Logged in as {role}")
         else:
             st.error("Invalid credentials")
 
@@ -168,169 +185,203 @@ elif choice == "Login":
 if 'username' in st.session_state:
     username = st.session_state['username']
     role = st.session_state['role']
+    st.sidebar.write(f"Logged in as: {username} ({role})")
+    if st.sidebar.button("Logout"):
+        st.session_state.clear()
+        st.experimental_rerun()
 
     if role == "Student":
         st.subheader(f"Student Dashboard ({username})")
-        student_menu = ["My Courses", "Register Course", "Exams", "Messages", "Generate PDFs",
-                        "Assignments Upload", "M-Pesa Payment", "Attendance"]
-        student_choice = st.selectbox("Options", student_menu)
+        # All student features with buttons reacting
+        course_code = st.text_input("Course Code (for registration or assignment)")
+        uploaded_file = st.file_uploader("Upload Assignment", type=["pdf","docx","jpg","png"])
+        camera_image = st.camera_input("Or take a picture for Assignment")
+        if st.button("Submit Assignment"):
+            if uploaded_file or camera_image:
+                file_path = os.path.join("uploads", uploaded_file.name if uploaded_file else f"{username}_camera.png")
+                os.makedirs("uploads", exist_ok=True)
+                with open(file_path, "wb") as f:
+                    if uploaded_file:
+                        f.write(uploaded_file.getbuffer())
+                    else:
+                        f.write(camera_image.getbuffer())
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute("INSERT INTO assignments (student, course_code, filename, timestamp) VALUES (?, ?, ?, ?)",
+                          (username, course_code, os.path.basename(file_path), timestamp))
+                conn.commit()
+                st.success("Assignment uploaded successfully!")
 
-        if student_choice == "My Courses":
-            st.write("📚 Registered Courses")
-            c.execute("SELECT course_code FROM registrations WHERE student=?", (username,))
-            courses = c.fetchall()
-            for course in courses:
-                st.write(course[0])
-
-        elif student_choice == "Register Course":
-            st.write("📝 Register for Courses")
-            course_code = st.text_input("Course Code")
-            if st.button("Register Course"):
+        if st.button("Register Course"):
+            if course_code:
                 c.execute("INSERT INTO registrations (student, course_code) VALUES (?, ?)", (username, course_code))
                 conn.commit()
                 st.success("Course Registered")
 
-        elif student_choice == "Exams":
-            st.write("📝 Exam Schedule")
+        if st.button("Pay Fees"):
+            amount = st.number_input("Enter Amount", min_value=1)
+            if st.button("Pay Now"):
+                status = mpesa_payment(username, amount)
+                st.success(f"Payment {status}")
+
+        if st.button("View Courses"):
+            c.execute("SELECT course_code FROM registrations WHERE student=?", (username,))
+            courses = c.fetchall()
+            st.write(courses if courses else "No courses registered.")
+
+        if st.button("View Exam Timetable"):
             c.execute("SELECT course_code, exam_date, center FROM exams")
             exams = c.fetchall()
             for exam in exams:
-                st.write(f"{exam[0]} - {exam[1]} - {exam[2]}")
+                st.write(f"{exam[0]} | {exam[1]} | {exam[2]}")
 
-        elif student_choice == "Messages":
-            st.write("💬 Send Message")
-            receiver = st.text_input("To")
+        if st.button("Hostel Application"):
+            room = st.text_input("Preferred Room Number")
+            if st.button("Apply"):
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute("INSERT INTO hostel (student, room_number, status, timestamp) VALUES (?, ?, ?, ?)",
+                          (username, room, "Pending", timestamp))
+                conn.commit()
+                st.success("Hostel application submitted!")
+
+        if st.button("Forum"):
+            post = st.text_area("Write your post")
+            if st.button("Post"):
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute("INSERT INTO forum (user, message, timestamp) VALUES (?, ?, ?)", (username, post, timestamp))
+                conn.commit()
+                st.success("Posted to forum!")
+            st.write("Forum Posts:")
+            c.execute("SELECT user, message, timestamp FROM forum ORDER BY id DESC")
+            posts = c.fetchall()
+            for p in posts:
+                st.write(f"{p[2]} | {p[0]}: {p[1]}")
+
+        if st.button("Vote in Elections"):
+            candidate = st.text_input("Enter Candidate Name")
+            if st.button("Submit Vote"):
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                c.execute("INSERT INTO elections (student, candidate, timestamp) VALUES (?, ?, ?)",
+                          (username, candidate, timestamp))
+                conn.commit()
+                st.success("Vote submitted!")
+
+        if st.button("Send Message"):
+            receiver = st.text_input("Receiver username")
             message = st.text_area("Message")
             if st.button("Send"):
                 send_message(username, receiver, message)
-                st.success("Message Sent!")
+                st.success("Message sent!")
 
-            st.write("📨 Inbox")
+        if st.button("View Messages"):
             c.execute("SELECT sender, message, timestamp FROM messages WHERE receiver=?", (username,))
             msgs = c.fetchall()
             for msg in msgs:
                 st.write(f"{msg[2]} | {msg[0]}: {msg[1]}")
-
-        elif student_choice == "Generate PDFs":
-            st.write("📄 Generate PDFs")
-            pdf_option = st.selectbox("Select", ["Fee Statement", "Clearance Form", "Exam Card"])
-            if st.button("Generate PDF"):
-                filename = f"{pdf_option}_{username}.pdf"
-                text_lines = [f"{pdf_option} for {username}", f"Generated on {datetime.now()}"]
-                generate_pdf(filename, text_lines)
-                st.success(f"{filename} created!")
-
-        elif student_choice == "Assignments Upload":
-            st.write("📂 Upload Assignment / TP")
-            course_code = st.text_input("Course Code")
-            uploaded_file = st.file_uploader("Choose a file")
-            if st.button("Upload"):
-                if uploaded_file:
-                    file_path = os.path.join("uploads", uploaded_file.name)
-                    os.makedirs("uploads", exist_ok=True)
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    c.execute("INSERT INTO assignments (student, course_code, filename, timestamp) VALUES (?, ?, ?, ?)",
-                              (username, course_code, uploaded_file.name, timestamp))
-                    conn.commit()
-                    st.success("File uploaded successfully!")
-
-        elif student_choice == "M-Pesa Payment":
-            st.write("💰 Simulate M-Pesa Payment")
-            amount = st.number_input("Enter Amount", min_value=1)
-            if st.button("Pay"):
-                status = mpesa_payment(username, amount)
-                st.success(f"Payment {status}!")
-
-        elif student_choice == "Attendance":
-            st.write("📋 View Attendance")
-            c.execute("SELECT course_code, date, status FROM attendance WHERE student=?", (username,))
-            att = c.fetchall()
-            for a in att:
-                st.write(f"{a[1]} | {a[0]} | {a[2]}")
 
     elif role == "Lecturer":
         st.subheader(f"Lecturer Dashboard ({username})")
-        lecturer_menu = ["My Courses", "Post Exam", "Messages", "Mark Attendance"]
-        lecturer_choice = st.selectbox("Options", lecturer_menu)
+        # Lecturer features: post exams, mark attendance, grade assignments
+        course_code = st.text_input("Course Code")
+        exam_date = st.date_input("Exam Date")
+        center = st.text_input("Exam Center")
+        if st.button("Post Exam"):
+            c.execute("INSERT INTO exams (course_code, exam_date, center) VALUES (?, ?, ?)", (course_code, exam_date, center))
+            conn.commit()
+            st.success("Exam posted!")
 
-        if lecturer_choice == "My Courses":
-            st.write("📚 Courses you teach")
-            c.execute("SELECT course_code FROM courses")
-            courses = c.fetchall()
-            for course in courses:
-                st.write(course[0])
+        student_name = st.text_input("Student Username for Attendance")
+        status = st.selectbox("Attendance Status", ["Present", "Absent"])
+        if st.button("Mark Attendance"):
+            date = datetime.now().strftime("%Y-%m-%d")
+            c.execute("INSERT INTO attendance (student, course_code, date, status) VALUES (?, ?, ?, ?)",
+                      (student_name, course_code, date, status))
+            conn.commit()
+            st.success("Attendance marked!")
 
-        elif lecturer_choice == "Post Exam":
-            st.write("📝 Schedule an Exam")
-            course_code = st.text_input("Course Code")
-            exam_date = st.date_input("Exam Date")
-            center = st.text_input("Exam Center")
-            if st.button("Post Exam"):
-                c.execute("INSERT INTO exams (course_code, exam_date, center) VALUES (?, ?, ?)",
-                          (course_code, exam_date, center))
-                conn.commit()
-                st.success("Exam Posted")
+        if st.button("View Assignments"):
+            c.execute("SELECT * FROM assignments WHERE course_code=?", (course_code,))
+            assgns = c.fetchall()
+            for a in assgns:
+                st.write(a)
 
-        elif lecturer_choice == "Messages":
-            st.write("💬 Send Message")
-            receiver = st.text_input("To")
+        if st.button("Send Message"):
+            receiver = st.text_input("Receiver username")
             message = st.text_area("Message")
             if st.button("Send"):
                 send_message(username, receiver, message)
-                st.success("Message Sent!")
-
-            st.write("📨 Inbox")
-            c.execute("SELECT sender, message, timestamp FROM messages WHERE receiver=?", (username,))
-            msgs = c.fetchall()
-            for msg in msgs:
-                st.write(f"{msg[2]} | {msg[0]}: {msg[1]}")
-
-        elif lecturer_choice == "Mark Attendance":
-            st.write("📋 Mark Attendance")
-            student_name = st.text_input("Student Username")
-            course_code = st.text_input("Course Code")
-            status = st.selectbox("Status", ["Present", "Absent"])
-            if st.button("Submit Attendance"):
-                date = datetime.now().strftime("%Y-%m-%d")
-                c.execute("INSERT INTO attendance (student, course_code, date, status) VALUES (?, ?, ?, ?)",
-                          (student_name, course_code, date, status))
-                conn.commit()
-                st.success("Attendance marked!")
+                st.success("Message sent!")
 
     elif role == "Admin":
-        st.subheader("Admin Panel")
-        admin_menu = ["Manage Users", "View Messages", "All Courses", "All Exams", "All Payments"]
-        admin_choice = st.selectbox("Options", admin_menu)
-
-        if admin_choice == "Manage Users":
-            c.execute("SELECT id, role, username, email FROM users")
+        st.subheader("Admin Dashboard")
+        if st.button("Manage Users"):
+            c.execute("SELECT id, role, username, full_name, email, phone FROM users")
             users = c.fetchall()
-            st.write("Registered Users:")
             for u in users:
-                st.write(f"{u[0]} | {u[1]} | {u[2]} | {u[3]}")
+                st.write(f"{u[0]} | {u[1]} | {u[2]} | {u[3]} | {u[4]} | {u[5]}")
 
-        elif admin_choice == "View Messages":
+        if st.button("View Messages"):
             c.execute("SELECT sender, receiver, message, timestamp FROM messages")
             msgs = c.fetchall()
             for msg in msgs:
                 st.write(f"{msg[3]} | {msg[0]} -> {msg[1]}: {msg[2]}")
 
-        elif admin_choice == "All Courses":
+        if st.button("All Courses"):
             c.execute("SELECT * FROM courses")
             courses = c.fetchall()
             for course in courses:
                 st.write(course)
 
-        elif admin_choice == "All Exams":
+        if st.button("All Exams"):
             c.execute("SELECT * FROM exams")
             exams = c.fetchall()
             for exam in exams:
                 st.write(exam)
 
-        elif admin_choice == "All Payments":
+        if st.button("All Payments"):
             c.execute("SELECT * FROM payments")
             payments = c.fetchall()
             for p in payments:
                 st.write(p)
+
+        if st.button("All Assignments"):
+            c.execute("SELECT * FROM assignments")
+            assgns = c.fetchall()
+            for a in assgns:
+                st.write(a)
+
+        if st.button("Hostel Applications"):
+            c.execute("SELECT * FROM hostel")
+            hostels = c.fetchall()
+            for h in hostels:
+                st.write(h)
+
+        if st.button("Election Votes"):
+            c.execute("SELECT * FROM elections")
+            votes = c.fetchall()
+            for v in votes:
+                st.write(v)
+
+        if st.button("Forum Posts"):
+            c.execute("SELECT * FROM forum")
+            posts = c.fetchall()
+            for p in posts:
+                st.write(p)
+
+
+
+
+
+    
+   
+           
+            
+           
+                
+   
+        
+        
+                
+       
+              
+        
+                
