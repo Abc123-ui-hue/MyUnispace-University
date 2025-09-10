@@ -230,7 +230,8 @@ if 'username' not in st.session_state:
             if row and verify_password(password_input, row[1]):
                 st.session_state['username'] = username_input
                 st.session_state['role'] = row[0]
-                st.experimental_rerun()
+                st.rerun()
+
             else:
                 st.error("Invalid credentials")
 
