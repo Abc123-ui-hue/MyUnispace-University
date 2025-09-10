@@ -242,7 +242,7 @@ if 'username' in st.session_state:
     st.sidebar.write(f"Logged in as: **{username}** ({role})")
     if st.sidebar.button("Logout"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
     # COMMON QUICK LINKS
     st.sidebar.markdown("---")
@@ -250,7 +250,7 @@ if 'username' in st.session_state:
     if st.sidebar.button("My Inbox"):
         st.experimental_set_query_params(view="inbox")
     if st.sidebar.button("My Assignments"):
-        st.experimental_set_query_params(view="assignments")
+        st.query_params["view"] = "assignments"
 
     # ---------- STUDENT ----------
     if role == "Student":
